@@ -1,0 +1,7 @@
+{
+  "name": "Data Rio Missão",
+  "description": "An interactive data dashboard with project history, CSV parsing, data visualization, and Gemini AI integration for analysis, search, maps, and image generation.",
+  "requestFramePermissions": [
+    "geolocation"
+  ]
+}
