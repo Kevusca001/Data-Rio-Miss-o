@@ -7,6 +7,15 @@
     <title>Data Rio Missão</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
+      // Debug inicial imediato
+      console.log("HTML Carregado. Iniciando scripts...");
+      window.onerror = function(msg, url, line, col, error) {
+        var extra = !col ? '' : '\ncolumn: ' + col;
+        extra += !error ? '' : '\nerror: ' + error;
+        console.error("Erro Global Detectado: " + msg + "\nurl: " + url + "\nline: " + line + extra);
+        return false;
+      };
+      
       tailwind.config = {
         darkMode: 'class',
         theme: {
@@ -75,5 +84,7 @@
 </head>
   <body class="bg-gray-50 text-gray-900 dark:bg-nexus-black dark:text-nexus-text">
     <div id="root"></div>
+    <!-- Entry point explícito para garantir carregamento em ambientes como Vercel -->
+    <script type="module" src="./index.tsx"></script>
   </body>
 </html>

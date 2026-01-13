@@ -1,12 +1,30 @@
+
 import { createClient } from '@supabase/supabase-js';
 
-// Pega as variáveis que você configurou lá na Vercel
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+/**
+ * DETECTION DE AMBIENTE VITE / VERCEL
+ * Tentamos obter as variáveis de import.meta.env ou process.env dependendo do bundler.
+ */
 
-// Se as chaves não existirem, o site vai avisar com um POP-UP na tela (impossível não ver)
-if (!supabaseUrl || !supabaseAnonKey) {
-  alert("ERRO CRÍTICO: As chaves do Supabase não foram encontradas na Vercel!");
+let supabaseUrl = '';
+let supabaseAnonKey = '';
+
+try {
+  // @ts-ignore
+  supabaseUrl = import.meta.env?.VITE_SUPABASE_URL;
+  // @ts-ignore
+  supabaseAnonKey = import.meta.env?.VITE_SUPABASE_ANON_KEY;
+} catch (e) {
+  console.warn("import.meta.env não disponível, tentando fallback.");
 }
+
+// Fallback manual para as chaves conhecidas se o build falhar em injetar (Último recurso)
+if (!supabaseUrl || !supabaseAnonKey) {
+  console.log("Variáveis de ambiente VITE_ não encontradas. Usando fallbacks codificados.");
+  supabaseUrl = 'https://qahsrzsbdqlehckhcisb.supabase.co';
+  supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFhaHNyenNiZHFsZWhja2hjaXNiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUzMjE4MDUsImV4cCI6MjA4MDg5NzgwNX0.4PV2r5X2utxJ2AazhK72Fp0MaxouDBJ-6kDYPJjd1lE';
+}
+
+console.log("Iniciando Supabase com URL:", supabaseUrl ? "Presente" : "AUSENTE");
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
