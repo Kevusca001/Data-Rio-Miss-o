@@ -7,10 +7,10 @@ import {
 import { MUNICIPIOS_SANEAMENTO } from "../data/municipiosSaneamento";
 import { MUNICIPIOS_IDH } from "../data/municipiosIDH";
 import { MUNICIPIOS_TAXA_HOMICIDIOS } from "../data/municipiosTaxaHomicidios";
-import { Layers, Info, ChevronDown, ChevronUp } from "lucide-react";
+import { Layers, Info, ChevronDown, ChevronUp, X } from "lucide-react";
 import { useTheme } from "../context/ThemeContext";
 
-// Using a more stable public URL for RJ Municipalities GeoJSON to avoid signed URL expiration
+// Using a more stable public URL for RJ Municipalities GeoJSON
 const MAP_URL = "https://raw.githubusercontent.com/tbrugz/geodata-br/master/geojson/geojs-33-mun.json";
 
 type GeoFeature = {
@@ -118,6 +118,7 @@ export default function RioMap() {
   const { theme } = useTheme();
   const [geoData, setGeoData] = useState<GeoData | null>(null);
   const [hoverFeature, setHoverFeature] = useState<GeoFeature | null>(null);
+  const [selectedFeature, setSelectedFeature] = useState<GeoFeature | null>(null);
   const [layer, setLayer] = useState<"normal" | "idh" | "ideb" | "agua" | "esgoto" | "lixo" | "taxaHomicidios">("normal");
   const [isLayersOpen, setIsLayersOpen] = useState(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
@@ -169,11 +170,22 @@ export default function RioMap() {
     return { paths: featurePaths };
   }, [geoData]);
 
-  if (fetchError) return <p className="text-red-600 text-center mt-4 font-bold">{fetchError}</p>;
-  if (!geoData) return <p className="text-nexus-yellowHover dark:text-nexus-yellow text-center mt-4 animate-pulse font-bold">Carregando mapa interativo do Rio de Janeiro...</p>;
+  const activeFeature = selectedFeature || hoverFeature;
+  const municipioInfo = activeFeature ? getPopFromFeature(activeFeature) : null;
+  const saneamento = activeFeature && activeFeature.properties.name ? MUNICIPIOS_SANEAMENTO[activeFeature.properties.name] : null;
 
-  const municipioInfo = hoverFeature ? getPopFromFeature(hoverFeature) : null;
-  const saneamento = hoverFeature && hoverFeature.properties.name ? MUNICIPIOS_SANEAMENTO[hoverFeature.properties.name] : null;
+  const handleMunicipalityClick = (feature: GeoFeature, e: React.MouseEvent | React.TouchEvent) => {
+    e.stopPropagation();
+    if (selectedFeature?.properties?.id === feature.properties?.id) {
+        setSelectedFeature(null);
+    } else {
+        setSelectedFeature(feature);
+    }
+  };
+
+  const clearSelection = () => {
+    setSelectedFeature(null);
+  };
 
   const legendData = (() => {
     if (layer === 'idh') return { title: 'Índice de Desenvolvimento Humano (IDH)', labels: ['< 0,60', '0,60-0,65', '0,65-0,70', '0,70-0,75', '0,75-0,80', '> 0,80'] };
@@ -182,91 +194,118 @@ export default function RioMap() {
     return { title: 'Percentual de Cobertura (%)', labels: ['< 50%', '50%-60%', '60%-70%', '70%-80%', '80%-90%', '> 90%'] };
   })();
 
-  return (
-    <div className="flex flex-col items-center mt-4 w-full max-w-6xl mx-auto px-4">
-      <div className="flex flex-col md:flex-row gap-6 w-full items-stretch justify-center">
-        {/* Info Card */}
-        <div className="w-full md:w-[320px] flex-shrink-0 flex flex-col justify-between bg-white dark:bg-slate-900/60 border border-gray-300 dark:border-slate-700/50 rounded-[20px] shadow-sm dark:shadow-[0_18px_45px_rgba(0,0,0,0.4)] p-6 transition-all duration-300 text-gray-900 dark:text-white">
-          <div>
+  if (fetchError) return <p className="text-red-600 text-center mt-4 font-bold">{fetchError}</p>;
+  if (!geoData) return <p className="text-nexus-yellowHover dark:text-nexus-yellow text-center mt-4 animate-pulse font-bold">Carregando mapa interativo do Rio de Janeiro...</p>;
+
+  const InfoContent = () => {
+    if (!activeFeature) return (
+        <div className="h-full flex flex-col justify-center items-center text-center p-4">
+            <Info size={32} className="text-nexus-muted mb-3 opacity-20" />
+            <p className="text-sm text-gray-600 dark:text-slate-400 leading-relaxed font-medium">Toque nos municípios para carregar indicadores estatísticos em tempo real.</p>
+        </div>
+    );
+
+    return (
+        <div className="animate-in fade-in duration-300">
             <div className="flex items-start justify-between mb-4">
                <h3 className="text-xl font-bold text-nexus-yellowHover dark:text-nexus-yellow tracking-tight leading-tight">
-                  {hoverFeature ? (hoverFeature.properties?.name || "Município") : "Explore o Mapa"}
+                  {activeFeature.properties?.name || "Município"}
                 </h3>
-                {hoverFeature && <Info size={16} className="text-gray-500 dark:text-nexus-muted mt-1" />}
+                {selectedFeature && (
+                    <button onClick={clearSelection} className="p-1 hover:bg-gray-100 dark:hover:bg-white/10 rounded-full transition-colors">
+                        <X size={16} className="text-gray-500" />
+                    </button>
+                )}
             </div>
-            {hoverFeature ? (
-              municipioInfo ? (
-                <div className="space-y-4">
-                  <div className="flex flex-col">
-                    <span className="text-[10px] text-gray-600 dark:text-slate-400 font-bold uppercase tracking-widest">População Estimada</span>
-                    <span className="text-lg font-black text-gray-800 dark:text-slate-200">{municipioInfo.population.toLocaleString("pt-BR")} hab.</span>
-                  </div>
-                  
-                  {layer === 'taxaHomicidios' && (
-                    <div className="mt-2 p-3 bg-gray-50 dark:bg-white/5 rounded-xl border border-gray-200 dark:border-white/10">
-                      <p className="text-[10px] text-gray-600 dark:text-slate-400 mb-2 uppercase font-bold tracking-widest">Segurança Pública</p>
-                      <div className="space-y-1.5">
-                        <div className="flex justify-between text-xs font-medium"><span className="text-gray-600 dark:text-slate-400">Taxa p/ 100k:</span><span className="text-nexus-yellowHover dark:text-nexus-yellow font-bold">{(MUNICIPIOS_TAXA_HOMICIDIOS[municipioInfo.name] || 0).toFixed(1).replace(".", ",")}</span></div>
-                        <div className="flex justify-between text-xs font-medium"><span className="text-gray-600 dark:text-slate-400">Homicídios (est.):</span><span className="text-gray-800 dark:text-slate-200">{Math.round(((MUNICIPIOS_TAXA_HOMICIDIOS[municipioInfo.name] || 0) * municipioInfo.population) / 100000)}</span></div>
-                      </div>
-                    </div>
-                  )}
-                  
-                  {layer !== "normal" && layer !== 'taxaHomicidios' && (
-                    <div className="mt-2 p-3 bg-gray-50 dark:bg-white/5 rounded-xl border border-gray-200 dark:border-white/10">
-                        <p className="text-[10px] text-gray-600 dark:text-slate-400 mb-2 uppercase font-bold tracking-widest">{layer}</p>
-                        <span className="text-3xl font-black text-nexus-yellowHover dark:text-nexus-yellow block">
-                            {(() => {
-                              const v = getLayerValue(municipioInfo.id, municipioInfo.name, layer);
-                              return v === null ? "S/D" : v.toFixed(layer === 'idh' ? 3 : 1).replace(".", ",");
-                            })()}{['agua', 'esgoto', 'lixo'].includes(layer) && "%"}
-                        </span>
-                    </div>
-                  )}
-                  
-                  {layer === 'normal' && saneamento && (
-                    <div className="mt-4 pt-4 border-t border-gray-200 dark:border-white/10 space-y-3">
-                      <p className="text-[10px] font-black text-gray-600 dark:text-slate-500 uppercase tracking-widest">Saneamento Básico</p>
-                      <div className="flex justify-between items-center text-xs font-bold text-gray-700 dark:text-slate-400">Água: <span className="text-gray-800 dark:text-slate-200">{formatCobertura(saneamento.semAgua)}</span></div>
-                      <div className="flex justify-between items-center text-xs font-bold text-gray-700 dark:text-slate-400">Esgoto: <span className="text-gray-800 dark:text-slate-200">{formatCobertura(saneamento.semEsgoto)}</span></div>
-                      <div className="flex justify-between items-center text-xs font-bold text-gray-700 dark:text-slate-400">Lixo: <span className="text-gray-800 dark:text-slate-200">{formatCobertura(saneamento.semLixo)}</span></div>
-                    </div>
-                  )}
+            
+            {municipioInfo ? (
+              <div className="space-y-4">
+                <div className="flex flex-col">
+                  <span className="text-[10px] text-gray-600 dark:text-slate-400 font-bold uppercase tracking-widest">População Estimada</span>
+                  <span className="text-lg font-black text-gray-800 dark:text-slate-200">{municipioInfo.population.toLocaleString("pt-BR")} hab.</span>
                 </div>
-              ) : <p className="text-sm text-gray-600 font-medium italic">Dados indisponíveis para este município.</p>
-            ) : <p className="text-sm text-gray-600 dark:text-slate-400 leading-relaxed font-medium">Passe o mouse ou toque nos municípios para carregar indicadores estatísticos em tempo real.</p>}
-          </div>
-          <div className="mt-6 pt-4 border-t border-gray-200 dark:border-white/5 text-[10px] text-gray-600 dark:text-slate-500 font-bold uppercase tracking-widest">
+                
+                <div className="grid grid-cols-1 gap-3">
+                    {layer === 'taxaHomicidios' && (
+                        <div className="p-3 bg-gray-50 dark:bg-white/5 rounded-xl border border-gray-200 dark:border-white/10">
+                        <p className="text-[10px] text-gray-600 dark:text-slate-400 mb-2 uppercase font-bold tracking-widest">Segurança Pública</p>
+                        <div className="space-y-1.5">
+                            <div className="flex justify-between text-xs font-medium"><span className="text-gray-600 dark:text-slate-400">Taxa p/ 100k:</span><span className="text-nexus-yellowHover dark:text-nexus-yellow font-bold">{(MUNICIPIOS_TAXA_HOMICIDIOS[municipioInfo.name] || 0).toFixed(1).replace(".", ",")}</span></div>
+                            <div className="flex justify-between text-xs font-medium"><span className="text-gray-600 dark:text-slate-400">Homicídios (est.):</span><span className="text-gray-800 dark:text-slate-200">{Math.round(((MUNICIPIOS_TAXA_HOMICIDIOS[municipioInfo.name] || 0) * municipioInfo.population) / 100000)}</span></div>
+                        </div>
+                        </div>
+                    )}
+                    
+                    {layer !== "normal" && layer !== 'taxaHomicidios' && (
+                        <div className="p-3 bg-gray-50 dark:bg-white/5 rounded-xl border border-gray-200 dark:border-white/10">
+                            <p className="text-[10px] text-gray-600 dark:text-slate-400 mb-2 uppercase font-bold tracking-widest">{layer}</p>
+                            <span className="text-3xl font-black text-nexus-yellowHover dark:text-nexus-yellow block">
+                                {(() => {
+                                const v = getLayerValue(municipioInfo.id, municipioInfo.name, layer);
+                                return v === null ? "S/D" : v.toFixed(layer === 'idh' ? 3 : 1).replace(".", ",");
+                                })()}{['agua', 'esgoto', 'lixo'].includes(layer) && "%"}
+                            </span>
+                        </div>
+                    )}
+                    
+                    {layer === 'normal' && saneamento && (
+                        <div className="pt-4 border-t border-gray-200 dark:border-white/10 space-y-3">
+                        <p className="text-[10px] font-black text-gray-600 dark:text-slate-500 uppercase tracking-widest">Saneamento Básico</p>
+                        <div className="flex justify-between items-center text-xs font-bold text-gray-700 dark:text-slate-400">Água: <span className="text-gray-800 dark:text-slate-200">{formatCobertura(saneamento.semAgua)}</span></div>
+                        <div className="flex justify-between items-center text-xs font-bold text-gray-700 dark:text-slate-400">Esgoto: <span className="text-gray-800 dark:text-slate-200">{formatCobertura(saneamento.semEsgoto)}</span></div>
+                        <div className="flex justify-between items-center text-xs font-bold text-gray-700 dark:text-slate-400">Lixo: <span className="text-gray-800 dark:text-slate-200">{formatCobertura(saneamento.semLixo)}</span></div>
+                        </div>
+                    )}
+                </div>
+              </div>
+            ) : <p className="text-sm text-gray-600 font-medium italic">Dados indisponíveis para este município.</p>}
+        </div>
+    );
+  };
+
+  return (
+    <div className="flex flex-col items-center mt-4 w-full max-w-6xl mx-auto px-4 overflow-hidden touch-none" onClick={clearSelection}>
+      <div className="relative w-full flex flex-col md:flex-row gap-6 items-stretch justify-center h-[600px] md:h-auto overflow-hidden">
+        
+        {/* Info Card - Desktop (Fixed Side) */}
+        <div className="hidden md:flex w-[320px] flex-shrink-0 flex-col justify-between bg-white dark:bg-slate-900/60 border border-gray-300 dark:border-slate-700/50 rounded-[20px] shadow-sm dark:shadow-[0_18px_45px_rgba(0,0,0,0.4)] p-6 transition-all duration-300 text-gray-900 dark:text-white" onClick={(e) => e.stopPropagation()}>
+           <InfoContent />
+           <div className="mt-6 pt-4 border-t border-gray-200 dark:border-white/5 text-[10px] text-gray-600 dark:text-slate-500 font-bold uppercase tracking-widest">
             {layer !== 'normal' ? 'Filtragem temática ativa' : 'Visão Geral do Estado'}
           </div>
         </div>
 
         {/* Map Container */}
-        <div className="flex-1 flex flex-col items-center">
-            <div className="relative w-full max-w-[800px] flex justify-center bg-white dark:bg-slate-900/30 rounded-2xl border border-gray-300 dark:border-slate-800/50 p-4 min-h-[400px] transition-colors duration-300 shadow-sm">
-                <svg width="100%" height="100%" viewBox={`0 0 ${MAP_WIDTH} ${MAP_HEIGHT}`} className="max-w-[420px] md:max-w-full h-auto drop-shadow-md dark:drop-shadow-2xl">
+        <div className="flex-1 flex flex-col items-center relative h-full md:h-auto overflow-hidden">
+            <div className="relative w-full h-full max-w-[800px] flex justify-center bg-white dark:bg-slate-900/30 rounded-2xl border border-gray-300 dark:border-slate-800/50 p-4 transition-colors duration-300 shadow-sm overflow-hidden touch-none">
+                <svg 
+                  width="100%" 
+                  height="100%" 
+                  viewBox={`0 0 ${MAP_WIDTH} ${MAP_HEIGHT}`} 
+                  className="max-w-full h-full drop-shadow-md dark:drop-shadow-2xl"
+                  style={{ touchAction: 'none' }}
+                >
                     {paths.map(({ d, feature }, idx) => {
-                      const isHovered = hoverFeature === feature;
+                      const isHovered = hoverFeature?.properties?.id === feature.properties?.id;
+                      const isSelected = selectedFeature?.properties?.id === feature.properties?.id;
                       const value = layer === 'normal' ? null : getLayerValue(feature.properties?.id, feature.properties?.name, layer);
                       
-                      // Lógica de Cores dos Municípios com alto contraste no Light Mode
                       let fillColor;
                       if (layer === 'normal') {
-                        if (isHovered) {
-                            // Amarelo Nexus para destaque em ambos os modos
+                        if (isSelected) {
                             fillColor = "#FFD700"; 
+                        } else if (isHovered) {
+                            fillColor = isLight ? "#d1d5db" : "#333333";
                         } else {
-                            // Cinza escuro (gray-400) no Light Mode e Quase Preto no Dark
                             fillColor = isLight ? "#9ca3af" : "#1a1a1a"; 
                         }
                       } else {
-                        // Thematic layers use specific scale
                         fillColor = getColorScale(value, layer);
+                        if (isSelected) fillColor = "#FFD700";
                       }
 
-                      // Bordas de alto contraste: Cinza chumbo (gray-600) no Light e Amarelo no Dark
-                      const strokeColor = isLight ? "#4b5563" : "#FFD700";
-                      const strokeWidth = isLight ? 1.5 : 0.5;
+                      const strokeColor = isSelected ? (isLight ? "#000" : "#fff") : (isLight ? "#4b5563" : "#FFD700");
+                      const strokeWidth = isSelected ? 3 : (isLight ? 1.5 : 0.5);
 
                       return (
                           <path 
@@ -275,9 +314,11 @@ export default function RioMap() {
                             fill={fillColor} 
                             stroke={strokeColor} 
                             strokeWidth={strokeWidth}
-                            onMouseEnter={() => setHoverFeature(feature)} 
-                            onMouseLeave={() => setHoverFeature(null)}
-                            className="transition-all duration-300 cursor-pointer hover:opacity-95"
+                            onMouseEnter={() => { if (!window.matchMedia("(pointer: coarse)").matches) setHoverFeature(feature) }} 
+                            onMouseLeave={() => { if (!window.matchMedia("(pointer: coarse)").matches) setHoverFeature(null) }}
+                            onClick={(e) => handleMunicipalityClick(feature, e)}
+                            className="transition-all duration-300 cursor-pointer outline-none"
+                            style={{ WebkitTapHighlightColor: 'transparent' }}
                           >
                             <title>{feature.properties?.name}</title>
                           </path>
@@ -286,7 +327,7 @@ export default function RioMap() {
                 </svg>
 
                 {/* Layer Toggle Floating Button */}
-                <div className={`absolute top-4 right-4 flex flex-col bg-white/90 dark:bg-slate-900/90 backdrop-blur-md rounded-xl border border-gray-400 dark:border-slate-700/50 shadow-lg z-10 transition-all duration-300 origin-top-right overflow-hidden ${isLayersOpen ? 'w-56' : 'w-32'}`}>
+                <div className={`absolute top-4 right-4 flex flex-col bg-white/95 dark:bg-slate-900/95 backdrop-blur-md rounded-xl border border-gray-400 dark:border-slate-700/50 shadow-lg z-10 transition-all duration-300 origin-top-right overflow-hidden ${isLayersOpen ? 'w-56' : 'w-32'}`} onClick={(e) => e.stopPropagation()}>
                      <button onClick={() => setIsLayersOpen(!isLayersOpen)} className="flex items-center justify-between px-3 py-2.5 w-full text-left hover:bg-gray-200 dark:hover:bg-white/5 transition-colors">
                          <div className="flex items-center gap-2 text-[10px] uppercase font-bold text-gray-600 dark:text-slate-400"><Layers size={14} className="text-nexus-yellowHover dark:text-nexus-yellow" /> CAMADAS</div>
                          {isLayersOpen ? <ChevronUp size={14} className="text-gray-500 dark:text-slate-400" /> : <ChevronDown size={14} className="text-gray-500 dark:text-slate-400" />}
@@ -296,7 +337,7 @@ export default function RioMap() {
                             {[["normal", "Físico / Político"], ["idh", "IDH"], ["ideb", "IDEB Educação"], ["agua", "Saneamento: Água"], ["esgoto", "Saneamento: Esgoto"], ["lixo", "Coleta de Lixo"], ["taxaHomicidios", "Segurança: Homicídios"]].map(([key, label]) => (
                                 <button 
                                     key={key} 
-                                    onClick={() => setLayer(key as any)} 
+                                    onClick={() => { setLayer(key as any); setIsLayersOpen(false); }} 
                                     className={`text-[11px] font-bold px-3 py-2 rounded-lg text-left transition-all border ${layer === key ? "bg-nexus-yellowHover dark:bg-blue-600 text-black dark:text-white border-nexus-yellowHover dark:border-blue-400 shadow-sm" : "bg-transparent text-gray-600 dark:text-slate-400 border-transparent hover:bg-gray-100 dark:hover:bg-white/10 hover:text-black dark:hover:text-white"}`}
                                 >
                                     {label}
@@ -307,14 +348,14 @@ export default function RioMap() {
                 </div>
             </div>
 
-            {/* Legenda */}
+            {/* Legend - Desktop only or better layout for mobile */}
             {layer !== "normal" && (
-                <div className="mt-6 flex flex-col items-center animate-in fade-in duration-500">
+                <div className="hidden md:flex flex-col items-center mt-6 animate-in fade-in duration-500">
                     <span className="text-[10px] text-gray-600 dark:text-slate-400 mb-3 font-bold uppercase tracking-widest">{legendData.title}</span>
                     <div className="flex items-center gap-0.5 p-1.5 bg-white dark:bg-slate-900/50 rounded-xl border border-gray-300 dark:border-slate-800 shadow-sm">
                         {[COLORS.LEVEL_1, COLORS.LEVEL_2, COLORS.LEVEL_3, COLORS.LEVEL_4, COLORS.LEVEL_5, COLORS.LEVEL_6].map((color, idx) => (
                             <div key={idx} className="flex flex-col items-center group relative">
-                                <div className="h-2.5 w-12 md:w-16 first:rounded-l-md last:rounded-r-md hover:scale-110 transition-transform cursor-help" style={{ backgroundColor: color }} />
+                                <div className="h-2.5 w-16 first:rounded-l-md last:rounded-r-md hover:scale-110 transition-transform cursor-help" style={{ backgroundColor: color }} />
                                 <span className="text-[9px] text-gray-600 dark:text-slate-500 mt-1.5 font-bold">{legendData.labels[idx]}</span>
                             </div>
                         ))}
@@ -322,6 +363,24 @@ export default function RioMap() {
                 </div>
             )}
         </div>
+
+        {/* Info Card - Mobile (Bottom Sheet/Fixed Overlay) */}
+        {activeFeature && (
+            <div 
+                className="md:hidden absolute bottom-0 left-0 right-0 z-20 bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border-t border-gray-300 dark:border-slate-700/50 shadow-[0_-10px_30px_rgba(0,0,0,0.2)] p-6 rounded-t-3xl animate-in slide-in-from-bottom-full duration-300" 
+                onClick={(e) => e.stopPropagation()}
+            >
+                <div className="w-12 h-1.5 bg-gray-300 dark:bg-slate-700 rounded-full mx-auto mb-6" />
+                <InfoContent />
+                {layer !== 'normal' && (
+                    <div className="mt-4 flex items-center justify-center gap-1 overflow-x-auto pb-2 no-scrollbar">
+                        {[COLORS.LEVEL_1, COLORS.LEVEL_2, COLORS.LEVEL_3, COLORS.LEVEL_4, COLORS.LEVEL_5, COLORS.LEVEL_6].map((color, idx) => (
+                            <div key={idx} className="h-2 w-8 first:rounded-l-sm last:rounded-r-sm" style={{ backgroundColor: color }} />
+                        ))}
+                    </div>
+                )}
+            </div>
+        )}
       </div>
     </div>
   );
