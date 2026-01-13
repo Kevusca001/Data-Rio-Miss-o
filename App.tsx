@@ -13,7 +13,7 @@ import PostsList from './components/PostsList';
 import PublishModal from './components/PublishModal';
 import LoginView from './components/LoginView'; 
 import { Project, DataPoint, ChartConfig, ChatMessage, Publication } from './types';
-import { Menu, Sparkles, Share2, ArrowLeft, LogOut } from 'lucide-react';
+import { Menu, Sparkles, Share2, ArrowLeft, LogOut, Loader2 } from 'lucide-react';
 
 const STORAGE_PROJECTS_KEY = 'datanexus_projects_v1';
 
@@ -25,6 +25,7 @@ const DEFAULT_CHART_CONFIG: ChartConfig = {
 };
 
 const App: React.FC = () => {
+  const [isInitializing, setIsInitializing] = useState(true);
   const [currentView, setCurrentView] = useState<'public' | 'publisher' | 'login'>('public');
   const [session, setSession] = useState<any>(null);
   const [publisherMode, setPublisherMode] = useState<'hub' | 'charts' | 'create' | 'edit_content' | 'edit' | 'drafts'>('hub');
@@ -36,26 +37,52 @@ const App: React.FC = () => {
   const [editingPostId, setEditingPostId] = useState<string | null>(null);
 
   useEffect(() => {
-    const savedProjects = localStorage.getItem(STORAGE_PROJECTS_KEY);
-    if (savedProjects) {
+    // === DEBUG LOGS PARA PRODUÇÃO ===
+    console.log("=== APP DATA RIO MISSÃO INICIOU ===");
+    // @ts-ignore
+    const env = (import.meta as any).env || {};
+    console.log("Supabase URL (ENV):", env.VITE_SUPABASE_URL ? "CONFIGURADO" : "VAZIO");
+    console.log("Supabase Key (ENV):", env.VITE_SUPABASE_ANON_KEY ? "CONFIGURADO" : "VAZIO");
+    console.log("Local Storage Key:", STORAGE_PROJECTS_KEY);
+
+    const initializeApp = async () => {
       try {
-        const parsed = JSON.parse(savedProjects);
-        setProjects(parsed);
-        const firstActive = parsed.find((p: Project) => !p.deleted);
-        if (firstActive) setActiveProjectId(firstActive.id);
-      } catch (e) { console.error(e); }
-    }
+        const savedProjects = localStorage.getItem(STORAGE_PROJECTS_KEY);
+        if (savedProjects) {
+          try {
+            const parsed = JSON.parse(savedProjects);
+            setProjects(parsed);
+            const firstActive = parsed.find((p: Project) => !p.deleted);
+            if (firstActive) setActiveProjectId(firstActive.id);
+          } catch (e) { 
+            console.error("Erro ao ler projetos do LocalStorage:", e); 
+          }
+        }
 
-    supabase.auth.getSession().then(({ data: { session } }) => {
-        setSession(session);
-    });
+        const { data, error } = await supabase.auth.getSession();
+        if (error) throw error;
+        
+        console.log("Sessão inicial recuperada:", data.session ? "Usuário Autenticado" : "Visitante");
+        setSession(data.session);
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-        setSession(session);
-        if (!session && (currentView === 'publisher')) setCurrentView('login');
-    });
+        const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+            console.log("Mudança de estado Auth:", _event, session ? "Login" : "Logout");
+            setSession(session);
+            if (!session && (currentView === 'publisher')) setCurrentView('login');
+        });
 
-    return () => subscription.unsubscribe();
+        // Cleanup function for onAuthStateChange
+        return () => subscription.unsubscribe();
+
+      } catch (err) {
+        console.error("FALHA CRÍTICA NA INICIALIZAÇÃO:", err);
+      } finally {
+        // Garantir que o estado de carregamento saia mesmo com erro
+        setIsInitializing(false);
+      }
+    };
+
+    initializeApp();
   }, []);
 
   useEffect(() => {
@@ -132,9 +159,35 @@ const App: React.FC = () => {
     }
   };
 
+  // TELA DE CARREGAMENTO PARA EVITAR "TELA PRETA" NO VERCEL
+  if (isInitializing) {
+    return (
+      <div className="min-h-screen bg-nexus-black text-white flex flex-col items-center justify-center p-6 text-center">
+        <Loader2 size={64} className="text-nexus-yellow animate-spin mb-6" />
+        <h2 className="text-3xl font-black uppercase tracking-tighter mb-2">Carregando Sistema...</h2>
+        <p className="text-nexus-muted text-sm max-w-xs">
+          Estamos preparando o Data Rio Missão. Se demorar mais que 10 segundos, verifique sua conexão ou as configurações do banco.
+        </p>
+        <div className="mt-8 pt-8 border-t border-nexus-border w-full max-w-sm">
+          <p className="text-[10px] uppercase font-bold text-gray-600 tracking-widest">Verificação do Console Ativa</p>
+        </div>
+      </div>
+    );
+  }
+
   if (currentView === 'public') return <PublicView onNavigateToPublisher={handleNavigateToPublisher} />;
   if (currentView === 'login') return <LoginView onLoginSuccess={() => { setPublisherMode('hub'); setCurrentView('publisher'); }} onCancel={() => setCurrentView('public')} />;
-  if (currentView === 'publisher' && !session) { setCurrentView('login'); return null; }
+  
+  // Tratamento explícito para evitar return null
+  if (currentView === 'publisher' && !session) { 
+    console.warn("Redirecionamento forçado: Tentativa de acesso sem sessão.");
+    setCurrentView('login'); 
+    return (
+      <div className="min-h-screen bg-nexus-black flex items-center justify-center">
+        <p className="text-white font-bold animate-pulse">Redirecionando para login...</p>
+      </div>
+    ); 
+  }
 
   // HUB DO PUBLICADOR
   if (publisherMode === 'hub') {
